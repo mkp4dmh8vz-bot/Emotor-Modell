@@ -6,6 +6,7 @@ Interaktives 3D-Schulungsmodell eines Drehstrom-Asynchronmotors (Käfigläufer, 
 - Drehfeld, Strangströme, Querschnitt mit ⊙/⊗, Liniendiagramm
 - Schlupf, Hochlauf, Drehrichtungsumkehr (L2↔L3), Stern/Dreieck
 - iPhone-tauglich: drehen mit einem Finger, zoomen mit zwei Fingern
+- Laptop: Ziehen oder Zwei-Finger-Wischen dreht, Spreizen oder Mausrad zoomt, Doppelklick zoomt auf die Stelle, Klick auf ein Bauteil zeigt die Erklärung
 
 `index.html` ist die komplette Seite (three.js wird vom CDN geladen).
 

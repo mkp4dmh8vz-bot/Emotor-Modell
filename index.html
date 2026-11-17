@@ -74,6 +74,15 @@ button:focus-visible,input:focus-visible,label:focus-within{outline:2px solid va
 
 @media (max-width:560px){.lbl{font-size:13px;padding:4px 6px 3px}.lbl small{display:none}.stage{height:min(62svh,560px)}}
 
+.stage canvas{cursor:grab}
+.stage:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.tip{position:absolute;left:0;top:0;pointer-events:none;font-family:var(--f-mono);font-size:12px;background:rgba(10,16,22,.9);color:#e6edf3;border:1px solid rgba(255,255,255,.16);padding:4px 8px;border-radius:4px;white-space:nowrap;z-index:2}
+.h-desk{display:none}
+.keys{display:none;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin-top:-6px}
+.keys span{display:inline-flex;align-items:center;gap:4px}
+kbd{font-family:var(--f-mono);font-size:12px;background:var(--chip);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:var(--fg)}
+@media (hover:hover) and (pointer:fine){.h-desk{display:inline}.h-touch{display:none}.keys{display:flex}}
+
 /* Bedienfeld */
 .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
 .grp{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -138,10 +147,10 @@ footer a{color:inherit}
 <header>
   <p class="eyebrow">Schulungsmodell · Drehstrom-Käfigläufer · 2-polig (p = 1) · 400 V / 50 Hz</p>
   <h1>Asynchronmotor-Simulator</h1>
-  <p class="lead">Ein Finger: Modell drehen. Zwei Finger: zoomen und verschieben. Beschriftung antippen öffnet die Erklärung zum Bauteil.</p>
+  <p class="lead"><span class="h-touch">Ein Finger: Modell drehen. Zwei Finger: zoomen und verschieben. Bauteil oder Beschriftung antippen öffnet die Erklärung.</span><span class="h-desk">Maus oder Touchpad: Ziehen oder mit zwei Fingern wischen dreht das Modell, zwei Finger spreizen oder das Mausrad zoomt. Bauteil oder Beschriftung anklicken öffnet die Erklärung.</span></p>
 </header>
 
-<section class="stage" id="stage" aria-label="3D-Modell des Asynchronmotors">
+<section class="stage" id="stage" tabindex="0" aria-label="3D-Modell des Asynchronmotors. Pfeiltasten drehen, Plus und Minus zoomen, Leertaste startet oder pausiert.">
   <canvas id="gl"></canvas>
   <svg id="leaders" aria-hidden="true"></svg>
   <div id="labels"></div>
@@ -161,8 +170,17 @@ footer a{color:inherit}
     <button class="x" id="infoX" aria-label="Erklärung schließen">×</button>
     <h3 id="infoT"></h3><p id="infoP"></p>
   </div>
+  <div class="tip" id="tip" hidden></div>
   <div id="loadmsg">3D-Modell wird geladen …</div>
 </section>
+<div class="keys" aria-label="Steuerung mit Maus, Touchpad und Tastatur">
+  <span><kbd>Ziehen</kbd> drehen</span>
+  <span><kbd>2 Finger wischen</kbd> drehen</span>
+  <span><kbd>2 Finger spreizen</kbd> oder <kbd>Mausrad</kbd> zoomen</span>
+  <span><kbd>Shift</kbd> + <kbd>Ziehen</kbd> oder <kbd>Rechts-Ziehen</kbd> verschieben</span>
+  <span><kbd>Doppelklick</kbd> auf Stelle heranzoomen</span>
+  <span><kbd>← → ↑ ↓</kbd> <kbd>+</kbd> <kbd>−</kbd> <kbd>Leertaste</kbd> Tastatur</span>
+</div>
 
 <section class="controls" aria-label="Bedienung">
   <div class="grp">
@@ -373,9 +391,10 @@ function build3D() {
     [f, b].forEach(m => { m.clippingPlanes = clipPlanes; m.clipIntersection = true; clipMats.push(m); });
     return [f, b];
   };
+  let curPart = null;
   const add = (geo, mat, parent, x = 0, y = 0, z = 0) => {
     const mats = Array.isArray(mat) ? mat : [mat]; let first;
-    mats.forEach(m => { const me = new THREE.Mesh(geo, m); me.position.set(x, y, z); parent.add(me); first = first || me; });
+    mats.forEach(m => { const me = new THREE.Mesh(geo, m); me.userData.part = curPart; me.position.set(x, y, z); parent.add(me); first = first || me; });
     return first;
   };
   const mSteel = CM({ color: 0x8d99a6, metalness: .55, roughness: .42 }, 0xc3ccd4);
@@ -397,6 +416,7 @@ function build3D() {
   gRotBody = new THREE.Group(); gRotor.add(gRotBody);
 
   /* Ständerblechpaket mit 24 Nuten */
+  curPart = 'st';
   const sh = new THREE.Shape(); sh.absarc(0, 0, RO, 0, TAU, false);
   const pts = [];
   for (let n = 0; n < NS; n++) {
@@ -412,6 +432,7 @@ function build3D() {
   for (let i = 0; i < NL; i++) add(lamG, mSteel, gStator, 0, 0, -L / 2 + i * pitch);
 
   /* Ständerwicklung: Nutleiter + Wickelköpfe + Stromrichtungspfeil */
+  curPart = 'wk';
   const RW = 1.47;
   for (let k = 0; k < 3; k++) {
     const base = new THREE.Color(PCOL[k]).multiplyScalar(0.2);
@@ -431,10 +452,11 @@ function build3D() {
     }
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 18), M({ color: PCOL[k], emissive: PCOL[k], emissiveIntensity: .6 }));
     cone.position.set(RW * Math.cos(ALPHA[k]), RW * Math.sin(ALPHA[k]), L / 2 + ez(k));
-    gStator.add(cone); cones.push(cone);
+    cone.userData.part = 'wk'; gStator.add(cone); cones.push(cone);
   }
 
   /* Gehäuse, Kühlrippen, Füße */
+  curPart = 'geh';
   const hg = new THREE.CylinderGeometry(HR, HR, 2 * ZE, 72, 1, true); hg.rotateX(Math.PI / 2);
   add(hg, mPaint, gHouse);
   const fg = new THREE.BoxGeometry(0.24, 0.07, 2 * ZE - 0.2);
@@ -448,12 +470,14 @@ function build3D() {
     add(new THREE.BoxGeometry(1.5, 0.42, 0.6), mPaintNC, gHouse, 0, -2.28, z);
   }
   /* Lagerschilde */
+  curPart = 'ls';
   const lp = [[0.5, 0.32], [0.64, 0.32], [0.68, 0.18], [1.5, 0.1], [2.0, 0.0], [HR, -0.12], [HR, -0.3]].map(p => new THREE.Vector2(p[0], p[1])).reverse();
   const lg = new THREE.LatheGeometry(lp, 64); lg.rotateX(Math.PI / 2);
   add(lg, mPaint, gHouse, 0, 0, ZE);
   const lgB = new THREE.LatheGeometry(lp, 64); lgB.rotateX(-Math.PI / 2);
   add(lgB, mPaint, gHouse, 0, 0, -ZE);
   /* Lüfterhaube mit Gitter */
+  curPart = 'luf';
   const hood = new THREE.CylinderGeometry(HR + 0.06, HR + 0.06, 1.1, 64, 1, true); hood.rotateX(Math.PI / 2);
   add(hood, mPaint, gHouse, 0, 0, -(ZE + 0.6));
   [0.55, 0.95, 1.35, 1.75, HR + 0.04].forEach(r => add(new THREE.TorusGeometry(r, 0.035, 6, 64), mPaint, gHouse, 0, 0, -(ZE + 1.15)));
@@ -462,6 +486,7 @@ function build3D() {
     sp.rotation.z = a;
   }
   /* Klemmenkasten */
+  curPart = 'kk';
   tb = new THREE.Group(); tb.position.set(0.8, 2.2, 0.4); gHouse.add(tb);
   add(new THREE.BoxGeometry(1.6, 0.35, 1.7), mPaintNC, tb, 0, -0.12, 0);
   add(new THREE.BoxGeometry(1.6, 0.45, 0.06), mPaintNC, tb, 0, 0.27, 0.82);
@@ -481,6 +506,7 @@ function build3D() {
   [-0.4, 0, 0.4].forEach(x => add(new THREE.BoxGeometry(0.16, 0.04, 0.78), mCu, deltaBr, x, 0.3, 0));
 
   /* Lager (feststehend gezeichnet) */
+  curPart = 'lag';
   const ring = (r0, r1, w) => { const g = new THREE.LatheGeometry([[r0, -w], [r1, -w], [r1, w], [r0, w], [r0, -w]].map(p => new THREE.Vector2(p[0], p[1])), 40); g.rotateX(Math.PI / 2); return g; };
   const ballG = new THREE.SphereGeometry(0.05, 10, 8);
   for (const z of [ZE + 0.15, -(ZE + 0.15)]) {
@@ -490,23 +516,29 @@ function build3D() {
   }
 
   /* Läufer: Blechpaket, Käfig, Kurzschlussringe, Markierung */
+  curPart = 'lf';
   const rl = new THREE.CylinderGeometry(RR, RR, pitch * 0.9, 54); rl.rotateX(Math.PI / 2);
   for (let i = 0; i < NL; i++) add(rl, mRotor, gRotBody, 0, 0, -L / 2 + (i + 0.5) * pitch);
+  curPart = 'stab';
   const bg = new THREE.CylinderGeometry(0.06, 0.06, L + 0.24, 10); bg.rotateX(Math.PI / 2);
   for (let j = 0; j < NR; j++) {
     const m = M({ color: 0xc4ccd4, emissive: 0x000000, metalness: .6, roughness: .35 });
     barMats.push(m);
     add(bg, m, gRotBody, 1.165 * Math.cos(barAng(j)), 1.165 * Math.sin(barAng(j)), 0);
   }
+  curPart = 'ring';
   for (const z of [L / 2 + 0.1, -L / 2 - 0.1]) add(ring(0.95, 1.235, 0.1), mAlu, gRotBody, 0, 0, z);
+  curPart = 'lf';
   add(new THREE.BoxGeometry(0.1, 0.5, 0.03), mMark, gRotBody, 0, 0.62, L / 2 + 0.01);
 
   /* Welle mit Passfeder, Lüfterrad */
+  curPart = 'wel';
   const sg1 = new THREE.CylinderGeometry(0.27, 0.27, 2 * ZE + 1.3, 24); sg1.rotateX(Math.PI / 2);
   add(sg1, mShaft, gRotor, 0, 0, -0.25);
   const sg2 = new THREE.CylinderGeometry(0.24, 0.24, 1.7, 24); sg2.rotateX(Math.PI / 2);
   add(sg2, mShaft, gRotor, 0, 0, ZE + 1.25);
   add(new THREE.BoxGeometry(0.1, 0.08, 1.0), mMark, gRotor, 0, 0.24, ZE + 1.45);
+  curPart = 'luf';
   const hub = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 24); hub.rotateX(Math.PI / 2);
   add(hub, mFan, gRotor, 0, 0, -(ZE + 0.6));
   for (let i = 0; i < 8; i++) {
@@ -649,6 +681,7 @@ function openInfo(t, p) { $('infoT').textContent = t; $('infoP').textContent = p
 $('infoX').addEventListener('click', () => { $('info').hidden = true; });
 
 /* ---------- Kamera ---------- */
+let fly = null;
 function viewDist(r) {
   const hv = camera.fov / 2 * DEG, hh = Math.atan(Math.tan(hv) * camera.aspect);
   return r / Math.tan(Math.min(hv, hh));
@@ -657,9 +690,10 @@ function setView(kind) {
   const t = kind === 'front' ? V3(0, 0, 0) : V3(0, 0.15, 0.4);
   const dir = kind === 'front' ? V3(0, 0.04, 1) : V3(-0.62, 0.42, 0.66);
   dir.normalize().multiplyScalar(viewDist(kind === 'front' ? 3.4 : 4.4));
-  controls.target.copy(t); camera.position.copy(t).add(dir); controls.update();
+  fly = null; controls.target.copy(t); camera.position.copy(t).add(dir); controls.update();
 }
 function dolly(f) {
+  fly = null;
   const t = controls.target, off = camera.position.clone().sub(t);
   const d = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * f));
   camera.position.copy(t).add(off.setLength(d)); controls.update();
@@ -667,6 +701,111 @@ function dolly(f) {
 function resize3D() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+
+/* ---------- Maus, Touchpad, Tastatur ---------- */
+function orbit(dTheta, dPhi) {
+  fly = null;
+  const t = controls.target, off = camera.position.clone().sub(t);
+  const sp = new THREE.Spherical().setFromVector3(off);
+  sp.theta -= dTheta; sp.phi = Math.min(Math.PI - 0.05, Math.max(0.05, sp.phi - dPhi));
+  off.setFromSpherical(sp); camera.position.copy(t).add(off); controls.update();
+}
+function flyTo(p) {
+  const off = camera.position.clone().sub(controls.target);
+  const d = Math.max(controls.minDistance + 0.5, off.length() * 0.55);
+  fly = { t0: performance.now(), dur: 520, fT: controls.target.clone(), tT: p.clone(), fP: camera.position.clone(), tP: p.clone().add(off.setLength(d)) };
+}
+function updateFly(now) {
+  if (!fly) return;
+  let u = Math.min(1, (now - fly.t0) / fly.dur); u = u * u * (3 - 2 * u);
+  controls.target.lerpVectors(fly.fT, fly.tT, u); camera.position.lerpVectors(fly.fP, fly.tP, u);
+  if (u >= 1) fly = null;
+}
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let pickRoots = [];
+function shown(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
+function pick(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  for (const h of ray.intersectObjects(pickRoots, true)) {
+    const o = h.object, part = o.userData.part;
+    if (!part || !shown(o)) continue;
+    const cp = o.material.clippingPlanes;
+    if (cp && cp.length && h.point.x < 0 && h.point.y > 0) continue; // im Viertelschnitt weggeschnitten
+    return { part, point: h.point };
+  }
+  return null;
+}
+const lblOf = id => LBL.find(d => d.id === id);
+function setupInput() {
+  pickRoots = scene.children.filter(c => c !== arrow);
+  const tip = $('tip');
+  /* Mausrad und Touchpad: Pinch (Strg+Rad) zoomt, Zwei-Finger-Wischen dreht, Mausrad zoomt */
+  let padUntil = 0, lastPinch = 0;
+  stage.addEventListener('wheel', e => {
+    if ($('info').contains(e.target)) return;
+    e.preventDefault(); e.stopPropagation();
+    let dx = e.deltaX, dy = e.deltaY;
+    if (e.deltaMode === 1) { dx *= 16; dy *= 16; } else if (e.deltaMode === 2) { dx *= 300; dy *= 300; }
+    const now = performance.now();
+    if (e.ctrlKey) { lastPinch = now; dolly(Math.exp(Math.max(-40, Math.min(40, dy)) * 0.012)); return; }
+    const wheel = now > padUntil && dx === 0 && (e.deltaMode !== 0 || (Math.abs(dy) >= 50 && Number.isInteger(dy)));
+    if (wheel) { dolly(Math.exp(Math.max(-150, Math.min(150, dy)) * 0.0012)); return; }
+    padUntil = now + 350;
+    orbit(dx * 0.006, dy * 0.006);
+  }, { passive: false, capture: true });
+  /* Safari auf dem Mac meldet Pinch als Gesture-Event */
+  if (!navigator.maxTouchPoints) {
+    let g = 1;
+    stage.addEventListener('gesturestart', e => { e.preventDefault(); g = 1; });
+    stage.addEventListener('gesturechange', e => { e.preventDefault(); if (performance.now() - lastPinch > 200) dolly(g / e.scale); g = e.scale; });
+  }
+  /* Klick/Tippen auf ein Bauteil öffnet die Erklärung, Doppelklick zoomt dorthin */
+  let down = null;
+  canvas.addEventListener('pointerdown', e => {
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button };
+    fly = null; tip.hidden = true;
+    if (e.pointerType === 'mouse') { canvas.style.cursor = 'grabbing'; stage.focus({ preventScroll: true }); }
+  });
+  window.addEventListener('pointerup', e => {
+    if (!down) return; const d = down; down = null; canvas.style.cursor = '';
+    if (d.b !== 0 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || performance.now() - d.t > 450) return;
+    const h = pick(e.clientX, e.clientY);
+    if (h) openInfo(lblOf(h.part).t, INFO[h.part]);
+  });
+  canvas.addEventListener('dblclick', e => { const h = pick(e.clientX, e.clientY); if (h) flyTo(h.point); });
+  /* Hover-Hinweis mit Bauteilname */
+  let req = 0;
+  canvas.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || e.buttons || req) return;
+    const cx = e.clientX, cy = e.clientY;
+    req = requestAnimationFrame(() => {
+      req = 0;
+      const h = pick(cx, cy);
+      if (!h) { tip.hidden = true; canvas.style.cursor = ''; return; }
+      const d = lblOf(h.part), r = stage.getBoundingClientRect();
+      tip.textContent = d.t + (d.s ? ' · ' + d.s : '') + ' – klicken für Erklärung';
+      tip.hidden = false; canvas.style.cursor = 'pointer';
+      const x = Math.min(r.width - tip.offsetWidth - 8, cx - r.left + 14), y = Math.min(r.height - tip.offsetHeight - 8, cy - r.top + 16);
+      tip.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    });
+  });
+  canvas.addEventListener('pointerleave', () => { tip.hidden = true; });
+  /* Tastatur, wenn die 3D-Ansicht den Fokus hat */
+  stage.addEventListener('keydown', e => {
+    const k = e.key;
+    if (e.target !== stage && (k === ' ' || k === 'Enter')) return;
+    let used = true;
+    if (k === 'ArrowLeft') orbit(-0.1, 0); else if (k === 'ArrowRight') orbit(0.1, 0);
+    else if (k === 'ArrowUp') orbit(0, -0.08); else if (k === 'ArrowDown') orbit(0, 0.08);
+    else if (k === '+' || k === '=') dolly(0.85); else if (k === '-' || k === '_') dolly(1.18);
+    else if (k === '0' || k === 'Home') setView('iso');
+    else if (k === ' ') setPlaying(!st.playing);
+    else used = false;
+    if (used) e.preventDefault();
+  });
 }
 
 /* ---------- Simulationsschritt ---------- */
@@ -859,7 +998,7 @@ function drawWave() {
 let ok3D = false;
 if (has3D) {
   try {
-    build3D(); makeLabels(); resize3D(); setView('iso');
+    build3D(); makeLabels(); resize3D(); setView('iso'); setupInput();
     new ResizeObserver(() => { resize3D(); }).observe(stage);
     $('loadmsg').hidden = true; ok3D = true;
   } catch (err) {
@@ -878,7 +1017,7 @@ function loop(now) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
   if (st.playing) step(dt);
   derive();
-  if (ok3D) { update3D(); controls.update(); renderer.render(scene, camera); updateLabels(); }
+  if (ok3D) { updateFly(now); update3D(); controls.update(); renderer.render(scene, camera); updateLabels(); }
   if (++tokAge > 30) { readTokens(); tokAge = 0; }
   drawXS(); drawWave();
   if (frame++ % 3 === 0) readouts();
