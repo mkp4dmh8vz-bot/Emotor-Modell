@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Asynchronmotor">
+<title>Asynchronmotor-Simulator</title>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: technisches Datenblatt – 3D-Bühne oben, darunter Bedienfeld, Messwerte, Diagramme, Theorie */
+:root{
+  --bg:#edf0f2; --surface:#ffffff; --fg:#15202a; --muted:#59666f; --line:#d2d9df;
+  --accent:#c2410c; --accent-fg:#ffffff;
+  --pU:#d6452f; --pV:#b98208; --pW:#2f6fca; --rp:#b81fc4; --rn:#0b8f84;
+  --chip:#e3e8ec;
+  --f-disp:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e141a; --surface:#151e26; --fg:#e3e9ee; --muted:#93a0ab; --line:#25313c;
+  --accent:#fb7c3c; --accent-fg:#1a0d05;
+  --pU:#f0644c; --pV:#f2c14e; --pW:#5b9bf0; --rp:#e879f9; --rn:#2dd4bf; --chip:#1e2a34; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e141a; --surface:#151e26; --fg:#e3e9ee; --muted:#93a0ab; --line:#25313c;
+  --accent:#fb7c3c; --accent-fg:#1a0d05;
+  --pU:#f0644c; --pV:#f2c14e; --pW:#5b9bf0; --rp:#e879f9; --rn:#2dd4bf; --chip:#1e2a34; color-scheme:dark}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 40px;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--f-disp);font-weight:700;letter-spacing:.01em;line-height:1.1;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,6vw,46px)}
+h2{font-size:26px}
+h3{font-size:20px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.lead{margin:6px 0 0;color:var(--muted);max-width:65ch}
+button,select{font:inherit}
+button:focus-visible,input:focus-visible,label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 3D-Bühne: bewusst immer dunkel (Werkstattlicht), unabhängig vom Theme */
+.stage{position:relative;height:min(70svh,660px);min-height:380px;border-radius:10px;overflow:hidden;
+  background:radial-gradient(120% 90% at 30% 20%,#243341 0%,#121a22 60%,#0b1117 100%);color:#e6edf3;
+  touch-action:none;-webkit-user-select:none;user-select:none}
+.stage canvas{display:block;width:100%;height:100%}
+#leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#labels{position:absolute;inset:0;pointer-events:none}
+.lbl{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
+  font-family:var(--f-disp);font-weight:600;font-size:15px;line-height:1;white-space:nowrap;
+  background:#f4f6f8;color:#111a22;padding:5px 8px 4px;border-radius:3px;box-shadow:0 1px 0 rgba(0,0,0,.35);border:0}
+.lbl small{font-family:var(--f-body);font-weight:400;font-size:11px;color:#4e5b66;margin-left:4px}
+.lbl.term{font-family:var(--f-mono);font-size:11px;font-weight:500;padding:2px 4px;background:#1c2630;color:#e6edf3;box-shadow:none}
+.lbl.pole{background:transparent;color:#fff;font-size:22px;box-shadow:none;padding:0;text-shadow:0 0 6px #000,0 0 2px #000;pointer-events:none}
+.hud{position:absolute;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.hud-tl{top:10px;left:max(10px,env(safe-area-inset-left,0px));max-width:62%}
+.hud-tr{top:10px;right:max(10px,env(safe-area-inset-right,0px));flex-direction:column}
+.hud-br{bottom:10px;right:max(10px,env(safe-area-inset-right,0px))}
+.chip{font-family:var(--f-mono);font-size:12px;background:rgba(10,16,22,.72);border:1px solid rgba(255,255,255,.12);padding:4px 8px;border-radius:4px;white-space:nowrap}
+.chip b{font-weight:500;color:#ffb38a}
+.ibtn{pointer-events:auto;width:40px;height:40px;border-radius:6px;border:1px solid rgba(255,255,255,.16);background:rgba(10,16,22,.75);color:#e6edf3;font-size:18px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.ibtn.txt{font-size:11px;font-family:var(--f-mono)}
+.ibtn:active{background:#2a3a48}
+.info{position:absolute;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:10px;max-width:440px;
+  background:rgba(244,246,248,.97);color:#111a22;border-radius:8px;padding:12px 14px 12px;box-shadow:0 8px 30px rgba(0,0,0,.45);pointer-events:auto}
+.info h3{font-size:21px;margin-bottom:4px}
+.info p{margin:0;font-size:14px}
+.info .x{position:absolute;top:6px;right:6px;width:32px;height:32px;border:0;background:transparent;font-size:20px;cursor:pointer;color:#111a22}
+#loadmsg{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:13px;color:#9fb0bf;pointer-events:none;text-align:center;padding:20px}
+
+@media (max-width:560px){.lbl{font-size:13px;padding:4px 6px 3px}.lbl small{display:none}.stage{height:min(62svh,560px)}}
+
+/* Bedienfeld */
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.grp{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.grp h3{font-size:15px;font-family:var(--f-mono);font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--chip);color:var(--fg);padding:9px 12px;border-radius:6px;cursor:pointer;min-height:42px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--chip);color:var(--fg);padding:8px 12px;cursor:pointer;min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.slider{display:flex;flex-direction:column;gap:4px}
+.slider label{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.slider output{font-family:var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
+.checks label{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer;min-height:30px}
+.checks input{width:18px;height:18px;accent-color:var(--accent)}
+.presets button{font-size:12px;padding:6px 9px;min-height:34px}
+
+/* Messwerte */
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cell{background:var(--surface);padding:10px 12px;min-width:0}
+.cell .k{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.cell .v{font-family:var(--f-mono);font-size:19px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cell .d{font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.bar{height:5px;background:var(--chip);border-radius:3px;margin-top:5px;position:relative;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;left:50%}
+
+/* Diagramme */
+.panels{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:12px}
+@media (max-width:760px){.panels{grid-template-columns:minmax(0,1fr)}}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+figure canvas{width:100%;display:block}
+#xs{aspect-ratio:1/1;max-width:100%}
+#wave{aspect-ratio:16/10;max-width:100%}
+figcaption{font-size:13px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+
+/* Theorie */
+.theory{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.card h3{margin-bottom:6px}
+.card p,.card li{max-width:65ch}
+.card p{margin:0 0 8px}
+.card ul{margin:0 0 8px;padding-left:18px}
+.f{font-family:var(--f-mono);font-size:14px;background:var(--chip);padding:8px 10px;border-radius:5px;margin:6px 0 8px;overflow-x:auto;white-space:nowrap}
+table{border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+td,th{border-bottom:1px solid var(--line);padding:4px 12px 4px 0;text-align:left}
+th{font-weight:600;color:var(--muted);font-size:12px}
+.warn{border-left:3px solid var(--accent);padding:6px 10px;background:var(--chip);border-radius:0 5px 5px 0;font-size:14px}
+footer{font-size:12px;color:var(--muted)}
+footer a{color:inherit}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="eyebrow">Schulungsmodell · Drehstrom-Käfigläufer · 2-polig (p = 1) · 400 V / 50 Hz</p>
+  <h1>Asynchronmotor-Simulator</h1>
+  <p class="lead">Ein Finger: Modell drehen. Zwei Finger: zoomen und verschieben. Beschriftung antippen öffnet die Erklärung zum Bauteil.</p>
+</header>
+
+<section class="stage" id="stage" aria-label="3D-Modell des Asynchronmotors">
+  <canvas id="gl"></canvas>
+  <svg id="leaders" aria-hidden="true"></svg>
+  <div id="labels"></div>
+  <div class="hud hud-tl" aria-live="polite">
+    <span class="chip" id="hDir">Rechtslauf</span>
+    <span class="chip">n<sub>s</sub> <b id="hNs">3000</b> min⁻¹</span>
+    <span class="chip">n <b id="hN">0</b> min⁻¹</span>
+    <span class="chip">s <b id="hS">100</b> %</span>
+  </div>
+  <div class="hud hud-tr">
+    <button class="ibtn" id="zin" aria-label="Hineinzoomen">+</button>
+    <button class="ibtn" id="zout" aria-label="Herauszoomen">−</button>
+    <button class="ibtn txt" id="vFront" aria-label="Ansicht von vorne (A-Seite)">A</button>
+    <button class="ibtn txt" id="vIso" aria-label="Schrägansicht">3D</button>
+  </div>
+  <div class="info" id="info" hidden>
+    <button class="x" id="infoX" aria-label="Erklärung schließen">×</button>
+    <h3 id="infoT"></h3><p id="infoP"></p>
+  </div>
+  <div id="loadmsg">3D-Modell wird geladen …</div>
+</section>
+
+<section class="controls" aria-label="Bedienung">
+  <div class="grp">
+    <h3>Betrieb</h3>
+    <div class="row">
+      <button class="btn primary" id="bOn">Einschalten (Hochlauf)</button>
+      <button class="btn" id="bPlay" aria-pressed="false">Pause</button>
+      <button class="btn" id="bStep">+30° el.</button>
+    </div>
+    <div class="slider">
+      <label for="sSpeed"><span>Zeitlupe: Drehfeld-Umdrehungen</span><output id="oSpeed">0,25 U/s</output></label>
+      <input type="range" id="sSpeed" min="0.05" max="1" step="0.05" value="0.25">
+    </div>
+  </div>
+  <div class="grp">
+    <h3>Last und Schlupf</h3>
+    <div class="slider">
+      <label for="sSlip"><span>Schlupf s (Belastung)</span><output id="oSlip">4 %</output></label>
+      <input type="range" id="sSlip" min="0" max="100" step="0.5" value="4">
+    </div>
+    <div class="row presets">
+      <button class="btn" data-slip="0">Synchron (s = 0)</button>
+      <button class="btn" data-slip="1">Leerlauf</button>
+      <button class="btn" data-slip="4">Nennlast</button>
+      <button class="btn" data-slip="100">Blockiert</button>
+    </div>
+  </div>
+  <div class="grp">
+    <h3>Netzanschluss</h3>
+    <div class="row">
+      <span style="font-size:13px;color:var(--muted)">Phasenfolge</span>
+      <div class="seg" role="group" aria-label="Phasenfolge">
+        <button id="dR" aria-pressed="true">L1-L2-L3</button><button id="dL" aria-pressed="false">L2↔L3 getauscht</button>
+      </div>
+    </div>
+    <div class="row">
+      <span style="font-size:13px;color:var(--muted)">Schaltung</span>
+      <div class="seg" role="group" aria-label="Schaltung">
+        <button id="cY" aria-pressed="true">Stern Y</button><button id="cD" aria-pressed="false">Dreieck Δ</button>
+      </div>
+    </div>
+    <p id="connTxt" style="margin:0;font-size:13px;color:var(--muted)"></p>
+  </div>
+  <div class="grp">
+    <h3>Ansicht</h3>
+    <div class="checks">
+      <label><input type="checkbox" id="kCut" checked> Viertelschnitt</label>
+      <label><input type="checkbox" id="kHouse" checked> Gehäuse</label>
+      <label><input type="checkbox" id="kRotor" checked> Läufer</label>
+      <label><input type="checkbox" id="kField" checked> Drehfeld-Pfeil</label>
+      <label><input type="checkbox" id="kLbl" checked> Beschriftung</label>
+      <label><input type="checkbox" id="kSpin"> Kamera kreist</label>
+    </div>
+  </div>
+</section>
+
+<section class="readout" aria-label="Momentanwerte">
+  <div class="cell"><div class="k">Zeitpunkt ε (el.)</div><div class="v" id="rEps">0°</div><div class="d" id="rT">t = 0,0 ms von 20 ms</div></div>
+  <div class="cell"><div class="k"><span class="sw" style="background:var(--pU)"></span>Strang U (U1–U2)</div><div class="v" id="rU">+100 %</div><div class="d" id="rUd">U1 → U2</div><div class="bar"><i id="bU" style="background:var(--pU)"></i></div></div>
+  <div class="cell"><div class="k"><span class="sw" style="background:var(--pV)"></span>Strang V (V1–V2)</div><div class="v" id="rV">−50 %</div><div class="d" id="rVd">V2 → V1</div><div class="bar"><i id="bV" style="background:var(--pV)"></i></div></div>
+  <div class="cell"><div class="k"><span class="sw" style="background:var(--pW)"></span>Strang W (W1–W2)</div><div class="v" id="rW">−50 %</div><div class="d" id="rWd">W2 → W1</div><div class="bar"><i id="bW" style="background:var(--pW)"></i></div></div>
+  <div class="cell"><div class="k">Summe i<sub>U</sub>+i<sub>V</sub>+i<sub>W</sub></div><div class="v" id="rSum">0 %</div><div class="d">immer 0 (Sternpunkt)</div></div>
+  <div class="cell"><div class="k">Drehfeld n<sub>s</sub> = 60·f/p</div><div class="v" id="rNs">3000 min⁻¹</div><div class="d" id="rDir">Rechtslauf (A-Seite)</div></div>
+  <div class="cell"><div class="k">Läufer n = n<sub>s</sub>(1−s)</div><div class="v" id="rN">2880 min⁻¹</div><div class="d" id="rS">s = 4,0 %</div></div>
+  <div class="cell"><div class="k">Läuferfrequenz f<sub>2</sub> = s·f<sub>1</sub></div><div class="v" id="rF2">2,0 Hz</div><div class="d">Induktion im Käfig</div></div>
+</section>
+
+<section class="panels">
+  <figure>
+    <canvas id="xs" width="600" height="600"></canvas>
+    <figcaption>Querschnitt, Blick auf die A-Seite (Wellenende). ⊙ Strom kommt aus der Zeichenebene, ⊗ geht hinein. Farbintensität = Betrag des Momentanstroms.</figcaption>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--pU)"></i>U</span><span><i class="sw" style="background:var(--pV)"></i>V</span><span><i class="sw" style="background:var(--pW)"></i>W</span>
+      <span><i class="sw" style="background:var(--rp)"></i>Läuferstrom ⊙</span><span><i class="sw" style="background:var(--rn)"></i>Läuferstrom ⊗</span>
+    </div>
+  </figure>
+  <figure>
+    <canvas id="wave" width="800" height="500"></canvas>
+    <figcaption>Strangströme über eine Netzperiode (20 ms bei 50 Hz). Keine Wicklung wird geschaltet: alle drei führen ständig Sinusstrom, um 120° zeitlich versetzt. Der Cursor zeigt den Zeitpunkt der 3D-Ansicht.</figcaption>
+  </figure>
+</section>
+
+<section class="theory" aria-label="Theorie">
+  <article class="card">
+    <h3>Aufbau</h3>
+    <ul>
+      <li><b>Ständer (Stator):</b> Blechpaket aus gegeneinander isolierten Elektroblechen (gegen Wirbelströme). In den Nuten liegen die drei Strangwicklungen U1–U2, V1–V2, W1–W2, räumlich um 120° el. versetzt.</li>
+      <li><b>Läufer (Rotor):</b> Käfigläufer. Aluminium- oder Kupferstäbe im Läuferblechpaket, an beiden Stirnseiten über Kurzschlussringe verbunden. Keine Bürsten, keine Schleifringe.</li>
+      <li><b>Luftspalt:</b> wenige Zehntel Millimeter. Je größer, desto mehr Magnetisierungsstrom und desto schlechter cos φ.</li>
+      <li><b>Mechanik:</b> Welle, Kugellager in den Lagerschilden, Lüfterrad auf der B-Seite unter der Lüfterhaube, Klemmenkasten mit Klemmbrett.</li>
+    </ul>
+  </article>
+  <article class="card">
+    <h3>Wie das Drehfeld entsteht</h3>
+    <p>Drei räumlich um 120° versetzte Wicklungen werden von drei zeitlich um 120° verschobenen Strömen durchflossen. Die drei Wechselfelder addieren sich zu einem Feld mit konstantem Betrag (1,5-fache Strangamplitude), das gleichmäßig umläuft.</p>
+    <div class="f">i<sub>U</sub> = Î·cos(ωt)<br>i<sub>V</sub> = Î·cos(ωt − 120°)<br>i<sub>W</sub> = Î·cos(ωt − 240°)</div>
+    <p>Beispiel ε = 0°: i<sub>U</sub> = +Î, i<sub>V</sub> = i<sub>W</sub> = −Î/2. Das Feld zeigt in Richtung der Achse von Strang U. Nach 120° el. führt V den Höchstwert, das Feld ist um 120° weitergewandert.</p>
+    <p>Tipp: Pause, dann mehrmals <b>+30° el.</b> drücken und den Querschnitt beobachten.</p>
+  </article>
+  <article class="card">
+    <h3>Warum der Läufer dreht</h3>
+    <p>Das Drehfeld bewegt sich relativ zu den Läuferstäben und induziert in ihnen eine Spannung (u = B·l·v). Über die Kurzschlussringe fließt ein großer Strom. Auf jeden stromdurchflossenen Stab im Feld wirkt die Kraft F = B·I·l, zusammen ergibt das ein Drehmoment in Drehfeldrichtung.</p>
+    <p>Der Läufer erreicht n<sub>s</sub> nie: Bei n = n<sub>s</sub> gibt es keine Relativbewegung, also keine Induktion und kein Moment. Daher der Name <b>asynchron</b>. Stell s = 0 ein: Die Stäbe werden stromlos.</p>
+    <div class="f">s = (n<sub>s</sub> − n) / n<sub>s</sub> &nbsp;&nbsp; f<sub>2</sub> = s · f<sub>1</sub></div>
+  </article>
+  <article class="card">
+    <h3>Drehzahl und Polpaarzahl</h3>
+    <div class="f">n<sub>s</sub> = 60 · f / p</div>
+    <div style="overflow-x:auto"><table>
+      <tr><th>Pole</th><th>p</th><th>n<sub>s</sub> bei 50 Hz</th><th>typ. Nenndrehzahl</th></tr>
+      <tr><td>2</td><td>1</td><td>3000 min⁻¹</td><td>≈ 2850–2950 min⁻¹</td></tr>
+      <tr><td>4</td><td>2</td><td>1500 min⁻¹</td><td>≈ 1420–1470 min⁻¹</td></tr>
+      <tr><td>6</td><td>3</td><td>1000 min⁻¹</td><td>≈ 940–970 min⁻¹</td></tr>
+      <tr><td>8</td><td>4</td><td>750 min⁻¹</td><td>≈ 700–730 min⁻¹</td></tr>
+    </table></div>
+    <p style="margin-top:8px"><b>Rechenbeispiel</b> Typenschild: 4-polig, n = 1440 min⁻¹</p>
+    <div class="f">n<sub>s</sub> = 60 · 50 Hz / 2 = 1500 min⁻¹<br>s = (1500 − 1440) / 1500 = 0,04 = 4 %<br>f<sub>2</sub> = 0,04 · 50 Hz = 2 Hz</div>
+  </article>
+  <article class="card">
+    <h3>Drehrichtung umkehren</h3>
+    <p>Zwei Außenleiter tauschen, z. B. L2 ↔ L3. Die Phasenfolge kehrt sich um, das Drehfeld und damit der Läufer drehen andersherum. Mit L1→U1, L2→V1, L3→W1 läuft der Motor rechts, Blick auf das Wellenende (A-Seite).</p>
+    <p>In der Steuerung ist das die <b>Wendeschützschaltung</b>: zwei Schütze, gegenseitig verriegelt über Öffner-Hilfskontakte und zusätzlich im SPS-Programm, sonst Kurzschluss zwischen zwei Außenleitern.</p>
+    <p>Probier im Bedienfeld „L2↔L3 getauscht" während der Motor läuft: Der Schlupf geht kurz über 100 % (Gegenstrombremsung), dann läuft er in Gegenrichtung hoch.</p>
+  </article>
+  <article class="card">
+    <h3>Stern und Dreieck</h3>
+    <p>Typenschild 230/400 V Δ/Y: Die Strangwicklung ist für 230 V ausgelegt. Am 400-V-Netz also <b>Stern</b>: U<sub>Str</sub> = 400 V / √3 ≈ 230 V. Brücken: W2–U2–V2.</p>
+    <p><b>Dreieck</b>: U<sub>Str</sub> = Netzspannung. An 400 V nur für Motoren 400/690 V Δ/Y. Brücken: U1–W2, V1–U2, W1–V2.</p>
+    <p>Stern-Dreieck-Anlauf: Im Stern sinken Netzstrom und Anzugsmoment auf ein Drittel der Dreieckswerte.</p>
+    <p class="warn"><b>Sicherheit:</b> Vor Arbeiten am Klemmbrett die 5 Sicherheitsregeln anwenden (freischalten, gegen Wiedereinschalten sichern, Spannungsfreiheit allpolig feststellen, erden und kurzschließen, benachbarte aktive Teile abdecken). Auslaufende Antriebe beachten. Bei Umrichterbetrieb die Entladezeit des Zwischenkreises abwarten (Angabe auf dem Gerät).</p>
+  </article>
+</section>
+
+<footer>
+  <p>Modell vereinfacht: 24 Ständernuten, Einschicht-Ganzlochwicklung mit q = 4 Nuten je Pol und Strang, 18 Läuferstäbe, nur Grundwelle des Feldes, Läuferstrom ohne Phasenverschiebung durch die Streureaktanz, Darstellung in Zeitlupe. Die Strangfarben dienen nur der Unterscheidung; die Aderfarben nach DIN EN 60445 sind L1 braun, L2 schwarz, L3 grau.</p>
+  <p>Quellen: <a href="https://de.wikipedia.org/wiki/Drehstrom-Asynchronmaschine" target="_blank" rel="noopener">Drehstrom-Asynchronmaschine (Wikipedia)</a> · <a href="https://de.wikipedia.org/wiki/Drehfeld" target="_blank" rel="noopener">Drehfeld (Wikipedia)</a> · DIN EN 60034-8 (Anschlussbezeichnungen und Drehsinn) · DIN VDE 0105-100 (5 Sicherheitsregeln)</p>
+</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2, DEG = Math.PI / 180;
+
+/* ---------- Simulation ----------
+   2-polig (p = 1): mechanischer Winkel = elektrischer Winkel.
+   Strangachsen U 0°, V 240°, W 120°: Folge L1-L2-L3 -> Drehfeld im Uhrzeigersinn
+   bei Blick auf die A-Seite (Wellenende, +z) = Rechtslauf. */
+const ALPHA = [0, 240 * DEG, 120 * DEG];
+const NS = 24, NR = 18;
+const st = { eps: 0, speed: 0.25, slipSet: 0.04, dir: 1, playing: true, star: true,
+  rotorAng: 0, rotorVel: 0, fieldAng: 0, fieldMag: 1.5, i: [1, -.5, -.5], slip: 1, aRot: 1 };
+const show = { cut: true, house: true, rotor: true, field: true, lbl: true, spin: false };
+
+function currents(eps, dir) {
+  const a = Math.cos(eps), b = Math.cos(eps - 120 * DEG), c = Math.cos(eps - 240 * DEG);
+  return dir > 0 ? [a, b, c] : [a, c, b];
+}
+function fieldOf(i) {
+  let x = 0, y = 0;
+  for (let k = 0; k < 3; k++) { x += i[k] * Math.cos(ALPHA[k]); y += i[k] * Math.sin(ALPHA[k]); }
+  return [Math.atan2(y, x), Math.hypot(x, y)];
+}
+/* Nutbelegung (Einschicht, q = 4, 60°-Zonen): Strang k, Vorzeichen sg (+1: Strom zur A-Seite) */
+const slots = [];
+for (let n = 0; n < NS; n++) {
+  const th = (n + 0.5) * TAU / NS;
+  for (let k = 0; k < 3; k++) for (const sg of [1, -1]) {
+    const c = ALPHA[k] + sg * 90 * DEG;
+    if (Math.abs(Math.atan2(Math.sin(th - c), Math.cos(th - c))) < 30 * DEG) slots.push({ th, k, sg });
+  }
+}
+const barAng = j => j * TAU / NR;
+/* Läuferstrom eines Stabes (Vorzeichen +: zur A-Seite), aus Relativbewegung Feld/Läufer */
+function barCurrent(j) { return st.aRot * Math.cos(st.rotorAng + barAng(j) - st.fieldAng); }
+
+/* ---------- 3D-Modell ---------- */
+const has3D = !!(window.THREE && THREE.OrbitControls);
+const stage = $('stage'), canvas = $('gl');
+const PCOL = [0xf0644c, 0xf2c14e, 0x5b9bf0];
+const L = 3.0, RO = 2.0, RI = 1.25, RS = 1.66, RR = 1.2, HR = 2.12, ZE = L / 2 + 0.95;
+let renderer, scene, camera, controls, gHouse, gRotor, gRotBody, arrow, tb, starBr, deltaBr;
+const clipMats = [], phaseMats = [], cones = [], barMats = [];
+let clipPlanes;
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+function build3D() {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.localClippingEnabled = true;
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(38, 1, 0.1, 150);
+  controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.09;
+  controls.minDistance = 3; controls.maxDistance = 34; controls.rotateSpeed = 0.8;
+  controls.autoRotateSpeed = 0.9;
+  scene.add(new THREE.HemisphereLight(0xe4edf5, 0x1b232c, 0.85));
+  const d1 = new THREE.DirectionalLight(0xffffff, 0.95); d1.position.set(-6, 9, 8); scene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x9fc2ff, 0.35); d2.position.set(7, -2, -6); scene.add(d2);
+
+  clipPlanes = [new THREE.Plane(V3(1, 0, 0), 0), new THREE.Plane(V3(0, -1, 0), 0)];
+  const M = o => new THREE.MeshStandardMaterial(o);
+  const CM = (o, sec) => { // geschnittenes Teil: Außenseite + Schnittfläche (Rückseite)
+    const f = M(o), b = M({ color: sec, metalness: .2, roughness: .7, side: THREE.BackSide });
+    [f, b].forEach(m => { m.clippingPlanes = clipPlanes; m.clipIntersection = true; clipMats.push(m); });
+    return [f, b];
+  };
+  const add = (geo, mat, parent, x = 0, y = 0, z = 0) => {
+    const mats = Array.isArray(mat) ? mat : [mat]; let first;
+    mats.forEach(m => { const me = new THREE.Mesh(geo, m); me.position.set(x, y, z); parent.add(me); first = first || me; });
+    return first;
+  };
+  const mSteel = CM({ color: 0x8d99a6, metalness: .55, roughness: .42 }, 0xc3ccd4);
+  const mPaint = CM({ color: 0x3c5870, metalness: .25, roughness: .6 }, 0x8fa3b4);
+  const mPaintNC = M({ color: 0x3c5870, metalness: .25, roughness: .6 });
+  const mRotor = M({ color: 0x6f7c89, metalness: .6, roughness: .4 });
+  const mAlu = M({ color: 0xc4ccd4, metalness: .7, roughness: .32 });
+  const mShaft = M({ color: 0xb7c0c8, metalness: .85, roughness: .25 });
+  const mBear = M({ color: 0xd6dce2, metalness: .9, roughness: .18 });
+  const mFan = M({ color: 0x5d6873, metalness: .1, roughness: .7 });
+  const mBrass = M({ color: 0xc9a227, metalness: .8, roughness: .3 });
+  const mCu = M({ color: 0xd08848, metalness: .7, roughness: .3 });
+  const mBoard = M({ color: 0x23272b, metalness: .1, roughness: .8 });
+  const mMark = M({ color: 0xff8a3d, emissive: 0xff6a1a, emissiveIntensity: .5 });
+
+  gHouse = new THREE.Group(); scene.add(gHouse);
+  const gStator = new THREE.Group(); scene.add(gStator);
+  gRotor = new THREE.Group(); scene.add(gRotor);
+  gRotBody = new THREE.Group(); gRotor.add(gRotBody);
+
+  /* Ständerblechpaket mit 24 Nuten */
+  const sh = new THREE.Shape(); sh.absarc(0, 0, RO, 0, TAU, false);
+  const pts = [];
+  for (let n = 0; n < NS; n++) {
+    const c = (n + 0.5) * TAU / NS, h0 = 0.075 / RI, h1 = 0.09 / RS, a0 = n * TAU / NS, a1 = c - h0, b0 = c + h0, b1 = (n + 1) * TAU / NS;
+    for (let s = 0; s <= 3; s++) { const a = a0 + (a1 - a0) * s / 3; pts.push(new THREE.Vector2(RI * Math.cos(a), RI * Math.sin(a))); }
+    pts.push(new THREE.Vector2(RS * Math.cos(c - h1), RS * Math.sin(c - h1)));
+    pts.push(new THREE.Vector2(RS * Math.cos(c + h1), RS * Math.sin(c + h1)));
+    for (let s = 0; s < 3; s++) { const a = b0 + (b1 - b0) * s / 3; pts.push(new THREE.Vector2(RI * Math.cos(a), RI * Math.sin(a))); }
+  }
+  sh.holes.push(new THREE.Path(pts));
+  const NL = 28, pitch = L / NL;
+  const lamG = new THREE.ExtrudeGeometry(sh, { depth: pitch * 0.88, bevelEnabled: false, curveSegments: 40 });
+  for (let i = 0; i < NL; i++) add(lamG, mSteel, gStator, 0, 0, -L / 2 + i * pitch);
+
+  /* Ständerwicklung: Nutleiter + Wickelköpfe + Stromrichtungspfeil */
+  const RW = 1.47;
+  for (let k = 0; k < 3; k++) {
+    const base = new THREE.Color(PCOL[k]).multiplyScalar(0.2);
+    phaseMats.push(M({ color: base, emissive: PCOL[k], emissiveIntensity: .5, metalness: .2, roughness: .65 }));
+  }
+  const ez = k => 0.26 + k * 0.17;
+  slots.forEach(s => {
+    const g = new THREE.BoxGeometry(0.34, 0.15, L + 2 * ez(s.k));
+    const m = add(g, phaseMats[s.k], gStator, RW * Math.cos(s.th), RW * Math.sin(s.th), 0);
+    m.rotation.z = s.th;
+  });
+  for (let k = 0; k < 3; k++) {
+    const tg = new THREE.TorusGeometry(RW, 0.12, 8, 48, Math.PI + 45 * DEG);
+    for (const side of [1, -1]) {
+      const t = add(tg, phaseMats[k], gStator, 0, 0, side * (L / 2 + ez(k)));
+      t.rotation.z = ALPHA[k] - 112.5 * DEG;
+    }
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 18), M({ color: PCOL[k], emissive: PCOL[k], emissiveIntensity: .6 }));
+    cone.position.set(RW * Math.cos(ALPHA[k]), RW * Math.sin(ALPHA[k]), L / 2 + ez(k));
+    gStator.add(cone); cones.push(cone);
+  }
+
+  /* Gehäuse, Kühlrippen, Füße */
+  const hg = new THREE.CylinderGeometry(HR, HR, 2 * ZE, 72, 1, true); hg.rotateX(Math.PI / 2);
+  add(hg, mPaint, gHouse);
+  const fg = new THREE.BoxGeometry(0.24, 0.07, 2 * ZE - 0.2);
+  for (let a = 0; a < 360; a += 15) {
+    if (Math.abs(a - 75) < 32 || Math.abs(a - 270) < 26) continue;
+    const r = a * DEG, f = add(fg, mPaint, gHouse, (HR + 0.11) * Math.cos(r), (HR + 0.11) * Math.sin(r), 0);
+    f.rotation.z = r;
+  }
+  for (const z of [1.3, -1.3]) {
+    add(new THREE.BoxGeometry(4.6, 0.14, 0.75), mPaintNC, gHouse, 0, -2.55, z);
+    add(new THREE.BoxGeometry(1.5, 0.42, 0.6), mPaintNC, gHouse, 0, -2.28, z);
+  }
+  /* Lagerschilde */
+  const lp = [[0.5, 0.32], [0.64, 0.32], [0.68, 0.18], [1.5, 0.1], [2.0, 0.0], [HR, -0.12], [HR, -0.3]].map(p => new THREE.Vector2(p[0], p[1])).reverse();
+  const lg = new THREE.LatheGeometry(lp, 64); lg.rotateX(Math.PI / 2);
+  add(lg, mPaint, gHouse, 0, 0, ZE);
+  const lgB = new THREE.LatheGeometry(lp, 64); lgB.rotateX(-Math.PI / 2);
+  add(lgB, mPaint, gHouse, 0, 0, -ZE);
+  /* Lüfterhaube mit Gitter */
+  const hood = new THREE.CylinderGeometry(HR + 0.06, HR + 0.06, 1.1, 64, 1, true); hood.rotateX(Math.PI / 2);
+  add(hood, mPaint, gHouse, 0, 0, -(ZE + 0.6));
+  [0.55, 0.95, 1.35, 1.75, HR + 0.04].forEach(r => add(new THREE.TorusGeometry(r, 0.035, 6, 64), mPaint, gHouse, 0, 0, -(ZE + 1.15)));
+  for (let i = 0; i < 8; i++) {
+    const a = i * 45 * DEG + 22.5 * DEG, sp = add(new THREE.BoxGeometry(1.65, 0.06, 0.06), mPaint, gHouse, 1.38 * Math.cos(a), 1.38 * Math.sin(a), -(ZE + 1.15));
+    sp.rotation.z = a;
+  }
+  /* Klemmenkasten */
+  tb = new THREE.Group(); tb.position.set(0.8, 2.2, 0.4); gHouse.add(tb);
+  add(new THREE.BoxGeometry(1.6, 0.35, 1.7), mPaintNC, tb, 0, -0.12, 0);
+  add(new THREE.BoxGeometry(1.6, 0.45, 0.06), mPaintNC, tb, 0, 0.27, 0.82);
+  add(new THREE.BoxGeometry(1.6, 0.45, 0.06), mPaintNC, tb, 0, 0.27, -0.82);
+  add(new THREE.BoxGeometry(0.06, 0.45, 1.7), mPaintNC, tb, -0.77, 0.27, 0);
+  add(new THREE.BoxGeometry(0.06, 0.45, 1.7), mPaintNC, tb, 0.77, 0.27, 0);
+  add(new THREE.BoxGeometry(1.3, 0.08, 1.3), mBoard, tb, 0, 0.1, 0);
+  tb.userData.term = {};
+  const tGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.22, 12), nGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.06, 6);
+  [['U1', -0.4, 0.3], ['V1', 0, 0.3], ['W1', 0.4, 0.3], ['W2', -0.4, -0.3], ['U2', 0, -0.3], ['V2', 0.4, -0.3]].forEach(([n, x, z]) => {
+    add(tGeo, mBrass, tb, x, 0.25, z); add(nGeo, mBrass, tb, x, 0.17, z);
+    tb.userData.term[n] = V3(x, 0.4, z);
+  });
+  starBr = new THREE.Group(); tb.add(starBr);
+  add(new THREE.BoxGeometry(0.95, 0.04, 0.16), mCu, starBr, 0, 0.3, -0.3);
+  deltaBr = new THREE.Group(); tb.add(deltaBr);
+  [-0.4, 0, 0.4].forEach(x => add(new THREE.BoxGeometry(0.16, 0.04, 0.78), mCu, deltaBr, x, 0.3, 0));
+
+  /* Lager (feststehend gezeichnet) */
+  const ring = (r0, r1, w) => { const g = new THREE.LatheGeometry([[r0, -w], [r1, -w], [r1, w], [r0, w], [r0, -w]].map(p => new THREE.Vector2(p[0], p[1])), 40); g.rotateX(Math.PI / 2); return g; };
+  const ballG = new THREE.SphereGeometry(0.05, 10, 8);
+  for (const z of [ZE + 0.15, -(ZE + 0.15)]) {
+    add(ring(0.43, 0.52, 0.09), mBear, scene, 0, 0, z);
+    add(ring(0.27, 0.34, 0.09), mBear, scene, 0, 0, z);
+    for (let i = 0; i < 9; i++) add(ballG, mBear, scene, 0.385 * Math.cos(i * TAU / 9), 0.385 * Math.sin(i * TAU / 9), z);
+  }
+
+  /* Läufer: Blechpaket, Käfig, Kurzschlussringe, Markierung */
+  const rl = new THREE.CylinderGeometry(RR, RR, pitch * 0.9, 54); rl.rotateX(Math.PI / 2);
+  for (let i = 0; i < NL; i++) add(rl, mRotor, gRotBody, 0, 0, -L / 2 + (i + 0.5) * pitch);
+  const bg = new THREE.CylinderGeometry(0.06, 0.06, L + 0.24, 10); bg.rotateX(Math.PI / 2);
+  for (let j = 0; j < NR; j++) {
+    const m = M({ color: 0xc4ccd4, emissive: 0x000000, metalness: .6, roughness: .35 });
+    barMats.push(m);
+    add(bg, m, gRotBody, 1.165 * Math.cos(barAng(j)), 1.165 * Math.sin(barAng(j)), 0);
+  }
+  for (const z of [L / 2 + 0.1, -L / 2 - 0.1]) add(ring(0.95, 1.235, 0.1), mAlu, gRotBody, 0, 0, z);
+  add(new THREE.BoxGeometry(0.1, 0.5, 0.03), mMark, gRotBody, 0, 0.62, L / 2 + 0.01);
+
+  /* Welle mit Passfeder, Lüfterrad */
+  const sg1 = new THREE.CylinderGeometry(0.27, 0.27, 2 * ZE + 1.3, 24); sg1.rotateX(Math.PI / 2);
+  add(sg1, mShaft, gRotor, 0, 0, -0.25);
+  const sg2 = new THREE.CylinderGeometry(0.24, 0.24, 1.7, 24); sg2.rotateX(Math.PI / 2);
+  add(sg2, mShaft, gRotor, 0, 0, ZE + 1.25);
+  add(new THREE.BoxGeometry(0.1, 0.08, 1.0), mMark, gRotor, 0, 0.24, ZE + 1.45);
+  const hub = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 24); hub.rotateX(Math.PI / 2);
+  add(hub, mFan, gRotor, 0, 0, -(ZE + 0.6));
+  for (let i = 0; i < 8; i++) {
+    const p = new THREE.Group(); p.rotation.z = i * 45 * DEG; p.position.z = -(ZE + 0.6); gRotor.add(p);
+    const b = add(new THREE.BoxGeometry(1.4, 0.05, 0.4), mFan, p, 1.08, 0, 0); b.rotation.x = 0.45;
+  }
+
+  /* Drehfeld-Pfeil (immer sichtbar, Pfeilspitze = Nordpol des Feldes) */
+  arrow = new THREE.Group(); arrow.position.z = L / 2 + 0.35; scene.add(arrow);
+  const am = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.93, depthTest: false });
+  const shaftA = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.85, 12), am); shaftA.rotation.z = -Math.PI / 2; shaftA.position.x = -0.12;
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.48, 18), am); head.rotation.z = -Math.PI / 2; head.position.x = 1.0;
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 10), am); tail.position.x = -1.05;
+  [shaftA, head, tail].forEach(m => { m.renderOrder = 20; arrow.add(m); });
+
+  setConn(); setCut();
+}
+function setCut() {
+  clipMats.forEach(m => { m.clippingPlanes = show.cut ? clipPlanes : []; m.needsUpdate = true; });
+}
+function setConn() {
+  if (starBr) { starBr.visible = st.star; deltaBr.visible = !st.star; }
+  $('connTxt').textContent = st.star
+    ? 'Stern an 400 V: Strangspannung 400 V / √3 ≈ 230 V. Brücke W2–U2–V2.'
+    : 'Dreieck: Strangspannung = Netzspannung. Brücken U1–W2, V1–U2, W1–V2.';
+}
+function update3D() {
+  for (let k = 0; k < 3; k++) {
+    const a = Math.abs(st.i[k]);
+    phaseMats[k].emissiveIntensity = 0.04 + 0.96 * a * a;
+    const c = cones[k], al = ALPHA[k], sgn = st.i[k] >= 0 ? 1 : -1;
+    c.quaternion.setFromUnitVectors(V3(0, 1, 0), V3(Math.sin(al) * sgn, -Math.cos(al) * sgn, 0));
+    const s = 0.25 + 0.95 * a; c.scale.set(s, s, s);
+  }
+  const P = new THREE.Color(0xe879f9), N = new THREE.Color(0x2dd4bf), A = new THREE.Color(0xc4ccd4);
+  for (let j = 0; j < NR; j++) {
+    const v = barCurrent(j), m = barMats[j], t = Math.min(1, Math.abs(v));
+    m.color.copy(A).lerp(v >= 0 ? P : N, t * 0.8);
+    m.emissive.copy(v >= 0 ? P : N).multiplyScalar(t * 0.75);
+  }
+  gRotor.rotation.z = st.rotorAng;
+  arrow.rotation.z = st.fieldAng;
+  arrow.visible = show.field;
+  gHouse.visible = show.house;
+  gRotBody.visible = show.rotor;
+  controls.autoRotate = show.spin;
+}
+
+/* ---------- Beschriftungen ---------- */
+const INFO = {
+  kk: 'Klemmbrett mit sechs Anschlüssen nach DIN EN 60034-8: vorne U1 V1 W1 für L1 L2 L3, hinten W2 U2 V2. Die Kupferbrücken legen Stern oder Dreieck fest (Umschalten unter „Netzanschluss“). Heranzoomen zeigt die Klemmenbezeichnungen.',
+  geh: 'Gehäuse aus Grauguss oder Aluminium. Die Rippen vergrößern die Oberfläche, das Lüfterrad bläst Luft darüber (Oberflächenkühlung). Wärme entsteht vor allem in Wicklung, Blechpaket und Läuferkäfig.',
+  st: 'Geschichtete, gegeneinander isolierte Elektrobleche (typisch 0,35–0,5 mm). Die Schichtung unterbricht Wirbelströme. In den 24 Nuten liegt die Drehstromwicklung. Im Viertelschnitt ist die Schnittfläche hell.',
+  wk: 'Drei Stränge U1–U2, V1–V2, W1–W2, räumlich um 120° versetzt. Leuchtstärke = Betrag des Momentanstroms, der Pfeil am vorderen Wickelkopf zeigt die Stromrichtung. Alle drei Stränge führen ständig Strom, geschaltet wird nichts.',
+  lf: 'Käfigläufer: Läuferblechpaket mit Aluminiumstäben auf der Welle. Er folgt dem Drehfeld etwas langsamer (Schlupf). Die orange Markierung an der Stirnseite und die Passfeder zeigen seine Drehung.',
+  stab: 'Stäbe aus Aluminium-Druckguss, an beiden Enden über die Kurzschlussringe verbunden. Magenta und Türkis zeigen den induzierten Strom in beiden Richtungen. Bei s = 0 sind sie stromlos, bei großem Schlupf voll ausgesteuert.',
+  ring: 'Verbindet alle Läuferstäbe an der Stirnseite, über die beiden Ringe schließt sich der Läuferstromkreis. Die angegossenen Lüfterflügel innen sind hier weggelassen.',
+  wel: 'Überträgt das Drehmoment auf die Arbeitsmaschine, die Passfeder (orange) auf Kupplung oder Riemenscheibe. A-Seite = Antriebsseite, sie ist Bezug für die Drehrichtung.',
+  lag: 'Rillenkugellager in den Lagerschilden auf A- und B-Seite. Sie nehmen Radialkräfte und geringe Axialkräfte auf. Lagerschäden gehören zu den häufigsten Motorausfällen.',
+  luf: 'Sitzt auf der B-Seite auf der Welle und dreht mit Läuferdrehzahl. Die Lüfterhaube führt die Luft über die Kühlrippen. Bei Umrichterbetrieb mit kleiner Drehzahl lässt die Kühlung nach, dann ggf. Fremdlüfter.',
+  ls: 'Verschließt das Gehäuse stirnseitig und trägt das Lager. Er zentriert den Läufer, damit der Luftspalt ringsum gleich bleibt.',
+  df: 'Resultierendes Magnetfeld der drei Stränge. Betrag konstant (1,5-fache Strangamplitude), Richtung dreht mit nₛ = 60·f/p. Pfeilspitze = Nordpol des Feldes. Mit „+30° el.“ schrittweise verfolgen.'
+};
+const fieldTip = r => V3(r * Math.cos(st.fieldAng), r * Math.sin(st.fieldAng), L / 2 + 0.35);
+const LBL = [
+  { id: 'kk', t: 'Klemmenkasten', s: 'Klemmbrett', p: () => V3(0.8, 2.75, 0.4), o: [70, -55], vis: () => show.house },
+  { id: 'geh', t: 'Gehäuse', s: 'Kühlrippen', p: () => V3(-2.2, -0.8, -1.2), o: [-80, 50], vis: () => show.house },
+  { id: 'st', t: 'Ständer', s: 'Blechpaket', p: () => V3(-1.55, 1.2, 0.2), o: [-80, -85], vis: () => true },
+  { id: 'wk', t: 'Ständerwicklung', s: 'U · V · W', p: () => V3(-1.25, -0.75, L / 2 + 0.45), o: [-95, 70], vis: () => true },
+  { id: 'lf', t: 'Läufer', s: 'Käfigläufer', p: () => V3(-0.75, 0.8, -0.9), o: [-10, -120], vis: () => show.rotor },
+  { id: 'stab', t: 'Läuferstäbe', s: 'Alu-Käfig', p: () => V3(-1.08, 0.55, 0.9), o: [-140, 0], vis: () => show.rotor, minor: true },
+  { id: 'ring', t: 'Kurzschlussring', s: '', p: () => V3(-0.45, 1.05, L / 2 + 0.2), o: [40, -110], vis: () => show.rotor, minor: true },
+  { id: 'wel', t: 'Welle', s: 'A-Seite', p: () => V3(0, -0.24, ZE + 1.9), o: [-30, 70], vis: () => true },
+  { id: 'lag', t: 'Kugellager', s: '', p: () => V3(-0.3, 0.38, ZE + 0.15), o: [-120, -30], vis: () => true, minor: true },
+  { id: 'luf', t: 'Lüfterrad', s: 'B-Seite', p: () => V3(-0.85, 0.85, -(ZE + 0.6)), o: [-70, -70], vis: () => true },
+  { id: 'ls', t: 'Lagerschild', s: '', p: () => V3(1.3, -1.3, ZE + 0.05), o: [80, 45], vis: () => show.house, minor: true },
+  { id: 'df', t: 'Drehfeld', s: 'Feldvektor', p: () => fieldTip(1.25), o: [55, -40], vis: () => show.field }
+];
+const lblLayer = $('labels'), svg = $('leaders'), SVGNS = 'http://www.w3.org/2000/svg';
+const poles = [];
+const terms = [];
+function makeLabels() {
+  LBL.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'lbl'; b.type = 'button';
+    b.innerHTML = d.t + (d.s ? '<small>' + d.s + '</small>' : '');
+    b.addEventListener('click', e => { e.stopPropagation(); openInfo(d.t, INFO[d.id]); });
+    lblLayer.appendChild(b); d.el = b;
+    d.ln = document.createElementNS(SVGNS, 'line'); d.ln.setAttribute('stroke', '#e6edf3'); d.ln.setAttribute('stroke-width', '1.2'); d.ln.setAttribute('opacity', '.85');
+    d.dot = document.createElementNS(SVGNS, 'circle'); d.dot.setAttribute('r', '4'); d.dot.setAttribute('fill', '#ffffff'); d.dot.setAttribute('stroke', '#111a22'); d.dot.setAttribute('stroke-width', '1.5');
+    svg.appendChild(d.ln); svg.appendChild(d.dot);
+  });
+  ['N', 'S'].forEach(n => { const e = document.createElement('div'); e.className = 'lbl pole'; e.textContent = n; lblLayer.appendChild(e); poles.push(e); });
+  Object.keys(tb.userData.term).forEach(n => {
+    const e = document.createElement('div'); e.className = 'lbl term'; e.textContent = n; lblLayer.appendChild(e);
+    terms.push({ el: e, p: tb.localToWorld(tb.userData.term[n].clone()) });
+  });
+}
+function proj(p, w, h) {
+  const v = p.clone().project(camera);
+  return { x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h, ok: v.z < 1 && Math.abs(v.x) < 1.3 && Math.abs(v.y) < 1.3 };
+}
+function place(el, x, y) { el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) translate(-50%,-50%)'; }
+function updateLabels() {
+  const w = stage.clientWidth, h = stage.clientHeight, on = show.lbl;
+  const dist = camera.position.distanceTo(controls.target);
+  const k = Math.max(0.5, Math.min(1, w / 900));
+  const narrow = w < 560 && dist > 9;
+  const vis = [];
+  LBL.forEach(d => {
+    const q = proj(d.p(), w, h);
+    const v = on && q.ok && d.vis() && !(d.minor && narrow);
+    d.el.hidden = !v; d.ln.style.display = d.dot.style.display = v ? '' : 'none';
+    if (!v) return;
+    const hw = d.el.offsetWidth / 2, hh = d.el.offsetHeight / 2;
+    vis.push({ d, q, hw, hh, x: Math.min(w - hw - 6, Math.max(hw + 6, q.x + d.o[0] * k)), y: q.y + d.o[1] * k });
+  });
+  /* Überlappungen auflösen: von oben nach unten schieben */
+  vis.sort((a, b) => a.y - b.y);
+  vis.forEach((a, i) => {
+    for (let j = 0; j < i; j++) {
+      const b = vis[j];
+      if (Math.abs(a.x - b.x) < a.hw + b.hw + 4 && Math.abs(a.y - b.y) < a.hh + b.hh + 3) a.y = b.y + a.hh + b.hh + 3;
+    }
+  });
+  vis.forEach(a => {
+    const y = Math.min(h - a.hh - 6, Math.max(a.hh + 6, a.y)), d = a.d;
+    place(d.el, a.x, y);
+    d.ln.setAttribute('x1', a.q.x); d.ln.setAttribute('y1', a.q.y); d.ln.setAttribute('x2', a.x); d.ln.setAttribute('y2', y);
+    d.dot.setAttribute('cx', a.q.x); d.dot.setAttribute('cy', a.q.y);
+  });
+  [fieldTip(1.6), fieldTip(-1.45)].forEach((p, i) => {
+    const q = proj(p, w, h), vis = show.field && q.ok;
+    poles[i].hidden = !vis; if (vis) place(poles[i], q.x, q.y);
+  });
+  const near = show.house && on && camera.position.distanceTo(tb.position) < 6.5;
+  terms.forEach(t => { const q = proj(t.p, w, h); t.el.hidden = !(near && q.ok); if (!t.el.hidden) place(t.el, q.x, q.y - 14); });
+}
+function openInfo(t, p) { $('infoT').textContent = t; $('infoP').textContent = p; $('info').hidden = false; }
+$('infoX').addEventListener('click', () => { $('info').hidden = true; });
+
+/* ---------- Kamera ---------- */
+function viewDist(r) {
+  const hv = camera.fov / 2 * DEG, hh = Math.atan(Math.tan(hv) * camera.aspect);
+  return r / Math.tan(Math.min(hv, hh));
+}
+function setView(kind) {
+  const t = kind === 'front' ? V3(0, 0, 0) : V3(0, 0.15, 0.4);
+  const dir = kind === 'front' ? V3(0, 0.04, 1) : V3(-0.62, 0.42, 0.66);
+  dir.normalize().multiplyScalar(viewDist(kind === 'front' ? 3.4 : 4.4));
+  controls.target.copy(t); camera.position.copy(t).add(dir); controls.update();
+}
+function dolly(f) {
+  const t = controls.target, off = camera.position.clone().sub(t);
+  const d = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * f));
+  camera.position.copy(t).add(off.setLength(d)); controls.update();
+}
+function resize3D() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+
+/* ---------- Simulationsschritt ---------- */
+const NS_RPM = 3000; // 60 · 50 Hz / p, p = 1
+function step(dt) {
+  const Om = TAU * st.speed, wf = -st.dir * Om;
+  st.eps += Om * dt;
+  st.rotorVel += (wf * (1 - st.slipSet) - st.rotorVel) * (1 - Math.exp(-dt / 0.9));
+  st.rotorAng += st.rotorVel * dt;
+}
+function derive() {
+  st.i = currents(st.eps, st.dir);
+  const f = fieldOf(st.i); st.fieldAng = f[0]; st.fieldMag = f[1];
+  const Om = TAU * st.speed, wf = -st.dir * Om;
+  st.slip = (wf - st.rotorVel) / wf;
+  const ar = (wf - st.rotorVel) / Om;
+  st.aRot = Math.sign(ar) * Math.min(1, Math.sqrt(Math.abs(ar) / 0.06));
+}
+const fmt = (x, d) => x.toFixed(d).replace('.', ',').replace('-', '−');
+const sgn = x => (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(0) + ' %';
+
+/* ---------- Bedienung ---------- */
+const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function setPlaying(p) { st.playing = p; $('bPlay').textContent = p ? 'Pause' : 'Weiter'; $('bPlay').setAttribute('aria-pressed', String(!p)); }
+$('bPlay').addEventListener('click', () => setPlaying(!st.playing));
+$('bOn').addEventListener('click', () => { st.rotorVel = 0; setPlaying(true); });
+$('bStep').addEventListener('click', () => {
+  setPlaying(false);
+  const d = 30 * DEG; st.eps += d; st.rotorAng += st.rotorVel * d / (TAU * st.speed);
+});
+$('sSpeed').addEventListener('input', e => {
+  const v = +e.target.value; st.rotorVel *= v / st.speed; st.speed = v;
+  $('oSpeed').textContent = fmt(v, 2) + ' U/s';
+});
+function setSlip(v) { st.slipSet = v / 100; $('sSlip').value = v; $('oSlip').textContent = fmt(v, v < 10 && v % 1 ? 1 : 0) + ' %'; }
+$('sSlip').addEventListener('input', e => setSlip(+e.target.value));
+document.querySelectorAll('[data-slip]').forEach(b => b.addEventListener('click', () => setSlip(+b.dataset.slip)));
+function seg(a, b, on) { $(a).setAttribute('aria-pressed', String(on)); $(b).setAttribute('aria-pressed', String(!on)); }
+$('dR').addEventListener('click', () => { st.dir = 1; seg('dR', 'dL', true); });
+$('dL').addEventListener('click', () => { st.dir = -1; seg('dR', 'dL', false); });
+$('cY').addEventListener('click', () => { st.star = true; seg('cY', 'cD', true); setConn(); });
+$('cD').addEventListener('click', () => { st.star = false; seg('cY', 'cD', false); setConn(); });
+[['kCut', 'cut'], ['kHouse', 'house'], ['kRotor', 'rotor'], ['kField', 'field'], ['kLbl', 'lbl'], ['kSpin', 'spin']].forEach(([id, key]) => {
+  $(id).addEventListener('change', e => {
+    show[key] = e.target.checked;
+    if (key === 'cut' && ok3D) setCut();
+    if (key === 'lbl') { svg.style.display = show.lbl ? '' : 'none'; }
+  });
+});
+$('zin').addEventListener('click', () => ok3D && dolly(0.8));
+$('zout').addEventListener('click', () => ok3D && dolly(1.25));
+$('vFront').addEventListener('click', () => ok3D && setView('front'));
+$('vIso').addEventListener('click', () => ok3D && setView('iso'));
+
+/* ---------- Messwerte ---------- */
+function readouts() {
+  const e = ((st.eps % TAU) + TAU) % TAU;
+  $('rEps').textContent = Math.round(e / DEG) % 360 + '°';
+  $('rT').textContent = 't = ' + fmt(e / TAU * 20, 1) + ' ms von 20 ms';
+  const names = [['U', 'U1', 'U2'], ['V', 'V1', 'V2'], ['W', 'W1', 'W2']];
+  names.forEach(([n, a, b], k) => {
+    const v = st.i[k];
+    $('r' + n).textContent = sgn(v);
+    $('r' + n + 'd').textContent = Math.abs(v) < 0.005 ? 'stromlos' : (v > 0 ? a + ' → ' + b : b + ' → ' + a);
+    const bar = $('b' + n), w = Math.abs(v) * 50;
+    bar.style.width = w + '%'; bar.style.left = (v >= 0 ? 50 : 50 - w) + '%';
+  });
+  const sum = st.i[0] + st.i[1] + st.i[2];
+  $('rSum').textContent = (Math.abs(sum) < 0.005 ? '0' : fmt(sum * 100, 0)) + ' %';
+  const right = st.dir > 0;
+  $('rDir').textContent = (right ? 'Rechtslauf' : 'Linkslauf') + ' (Blick auf A-Seite)';
+  $('hDir').textContent = 'Drehfeld ' + (right ? '↻ rechts' : '↺ links');
+  const n = -st.rotorVel / (TAU * st.speed) * NS_RPM; // + = rechts
+  const s = st.slip * 100;
+  $('rN').textContent = Math.round(Math.abs(n)) + ' min⁻¹';
+  $('rS').textContent = 's = ' + fmt(s, 1) + ' %' + (s > 100.5 ? ' · Gegenstrombremsung' : '') + (Math.abs(n) > 5 ? (n > 0 ? ' · ↻' : ' · ↺') : '');
+  $('rF2').textContent = fmt(Math.abs(st.slip) * 50, 1) + ' Hz';
+  $('hN').textContent = Math.round(Math.abs(n));
+  $('hS').textContent = fmt(s, 1);
+}
+
+/* ---------- 2D-Diagramme ---------- */
+const xs = $('xs'), wave = $('wave');
+let tok = {}, tokAge = 0;
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  ['--fg', '--muted', '--line', '--surface', '--chip', '--accent', '--pU', '--pV', '--pW', '--rp', '--rn'].forEach(n => tok[n] = cs.getPropertyValue(n).trim());
+}
+function fitCanvas(c) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); return [g, w, h];
+}
+function sym(g, x, y, r, out, col) { // ⊙ / ⊗
+  g.strokeStyle = col; g.fillStyle = col; g.lineWidth = Math.max(1, r * 0.22);
+  g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+  if (out) { g.beginPath(); g.arc(x, y, r * 0.28, 0, TAU); g.fill(); }
+  else { const q = r * 0.62; g.beginPath(); g.moveTo(x - q, y - q); g.lineTo(x + q, y + q); g.moveTo(x + q, y - q); g.lineTo(x - q, y + q); g.stroke(); }
+}
+function arrowLine(g, x0, y0, x1, y1, hw) {
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - Math.cos(a) * hw, y1 - Math.sin(a) * hw); g.stroke();
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x1 - Math.cos(a - 0.45) * hw * 1.6, y1 - Math.sin(a - 0.45) * hw * 1.6);
+  g.lineTo(x1 - Math.cos(a + 0.45) * hw * 1.6, y1 - Math.sin(a + 0.45) * hw * 1.6); g.closePath(); g.fill();
+}
+function drawXS() {
+  const [g, w] = fitCanvas(xs), c = w / 2, s = w / 2 / 2.45;
+  const P = (r, a) => [c + r * Math.cos(a) * s, c - r * Math.sin(a) * s];
+  const pc = [tok['--pU'], tok['--pV'], tok['--pW']];
+  g.clearRect(0, 0, w, w);
+  g.fillStyle = tok['--chip']; g.beginPath(); g.arc(c, c, RO * s, 0, TAU); g.arc(c, c, RI * s, 0, TAU, true); g.fill('evenodd');
+  g.strokeStyle = tok['--line']; g.lineWidth = 1; g.beginPath(); g.arc(c, c, RO * s, 0, TAU); g.stroke();
+  const rs = Math.max(5, 0.13 * s);
+  slots.forEach(sl => {
+    const v = sl.sg * st.i[sl.k], [x, y] = P(1.47, sl.th);
+    g.globalAlpha = 0.12 + 0.88 * Math.abs(v); g.fillStyle = pc[sl.k];
+    g.beginPath(); g.arc(x, y, rs, 0, TAU); g.fill(); g.globalAlpha = 1;
+    g.strokeStyle = pc[sl.k]; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, rs, 0, TAU); g.stroke();
+    if (Math.abs(v) > 0.02) sym(g, x, y, rs * 0.62, v > 0, tok['--fg']);
+  });
+  g.font = '600 ' + Math.max(11, s * 0.17) + 'px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let k = 0; k < 3; k++) for (const sg of [1, -1]) {
+    const [x, y] = P(2.25, ALPHA[k] + sg * 90 * DEG); g.fillStyle = pc[k];
+    g.fillText((sg > 0 ? ['U1', 'V1', 'W1'] : ['U2', 'V2', 'W2'])[k], x, y);
+  }
+  if (show.rotor) {
+    g.fillStyle = tok['--line']; g.beginPath(); g.arc(c, c, RR * s, 0, TAU); g.fill();
+    const rb = Math.max(3.5, 0.075 * s);
+    for (let j = 0; j < NR; j++) {
+      const v = barCurrent(j), [x, y] = P(1.08, st.rotorAng + barAng(j));
+      g.fillStyle = tok['--surface']; g.beginPath(); g.arc(x, y, rb, 0, TAU); g.fill();
+      g.globalAlpha = Math.min(1, Math.abs(v)); g.fillStyle = v >= 0 ? tok['--rp'] : tok['--rn'];
+      g.beginPath(); g.arc(x, y, rb, 0, TAU); g.fill(); g.globalAlpha = 1;
+      if (Math.abs(v) > 0.15 && rb > 5) sym(g, x, y, rb * 0.6, v > 0, tok['--surface']);
+    }
+    g.strokeStyle = tok['--accent']; g.lineWidth = 3; g.lineCap = 'round';
+    const [mx, my] = P(0.85, st.rotorAng + 90 * DEG), [m0x, m0y] = P(0.35, st.rotorAng + 90 * DEG);
+    g.beginPath(); g.moveTo(m0x, m0y); g.lineTo(mx, my); g.stroke(); g.lineCap = 'butt';
+    g.fillStyle = tok['--muted']; g.beginPath(); g.arc(c, c, 0.27 * s, 0, TAU); g.fill();
+  }
+  if (show.field) {
+    const [hx, hy] = P(1.0, st.fieldAng), [tx, ty] = P(-0.95, st.fieldAng);
+    g.strokeStyle = g.fillStyle = tok['--fg']; g.lineWidth = Math.max(2.5, s * 0.05);
+    arrowLine(g, tx, ty, hx, hy, Math.max(7, s * 0.12));
+    g.font = '700 ' + Math.max(13, s * 0.2) + 'px "Barlow Condensed", sans-serif';
+    const [nx, ny] = P(0.72, st.fieldAng + 0.42), [sx, sy] = P(0.72, st.fieldAng + Math.PI - 0.42);
+    g.fillText('N', nx, ny); g.fillText('S', sx, sy);
+  }
+  g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = tok['--muted'];
+  g.font = '500 ' + Math.max(11, w * 0.024) + 'px "IBM Plex Mono", monospace';
+  g.fillText('Drehfeld ' + (st.dir > 0 ? '↻ rechts' : '↺ links'), 8, 8);
+}
+function drawWave() {
+  const [g, w, h] = fitCanvas(wave), ml = 40, mr = 28, mt = 26, mb = 40, pw = w - ml - mr, ph = h - mt - mb;
+  const X = d => ml + d / 360 * pw, Y = v => mt + (1 - v) / 2 * ph;
+  const pc = [tok['--pU'], tok['--pV'], tok['--pW']];
+  g.clearRect(0, 0, w, h);
+  const fs = Math.max(10, Math.min(13, w * 0.022));
+  g.font = '400 ' + fs + 'px "IBM Plex Mono", monospace'; g.lineWidth = 1;
+  g.strokeStyle = tok['--line']; g.fillStyle = tok['--muted']; g.textAlign = 'center'; g.textBaseline = 'top';
+  for (let d = 0; d <= 360; d += 30) {
+    g.globalAlpha = d % 90 ? 0.45 : 1; g.beginPath(); g.moveTo(X(d), mt); g.lineTo(X(d), mt + ph); g.stroke(); g.globalAlpha = 1;
+    if (d % 90 === 0) { g.fillText(d + '°', X(d), mt + ph + 5); g.fillText(fmt(d / 18, 0) + ' ms', X(d), mt + ph + 7 + fs); }
+  }
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  [[1, '+Î'], [0.5, ''], [0, '0'], [-0.5, ''], [-1, '−Î']].forEach(([v, t]) => {
+    g.globalAlpha = t ? 1 : 0.45; g.beginPath(); g.moveTo(ml, Y(v)); g.lineTo(ml + pw, Y(v)); g.stroke(); g.globalAlpha = 1;
+    if (t) g.fillText(t, ml - 6, Y(v));
+  });
+  for (let k = 0; k < 3; k++) {
+    g.strokeStyle = pc[k]; g.lineWidth = 2.2; g.beginPath();
+    for (let d = 0; d <= 360; d += 3) { const v = currents(d * DEG, st.dir)[k]; d ? g.lineTo(X(d), Y(v)) : g.moveTo(X(d), Y(v)); }
+    g.stroke();
+  }
+  const e = (((st.eps % TAU) + TAU) % TAU) / DEG;
+  g.strokeStyle = tok['--fg']; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(e), mt - 4); g.lineTo(X(e), mt + ph); g.stroke();
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '600 ' + fs + 'px "IBM Plex Mono", monospace';
+  const nm = ['iU', 'iV', 'iW'];
+  for (let k = 0; k < 3; k++) {
+    const y = Y(st.i[k]);
+    g.fillStyle = tok['--surface']; g.beginPath(); g.arc(X(e), y, 5.5, 0, TAU); g.fill();
+    g.fillStyle = pc[k]; g.beginPath(); g.arc(X(e), y, 4.5, 0, TAU); g.fill();
+  }
+  g.textBaseline = 'top'; let lx = ml;
+  for (let k = 0; k < 3; k++) { g.fillStyle = pc[k]; g.fillRect(lx, 7, 14, 3); g.fillText(nm[k], lx + 18, 2); lx += 70; }
+  g.fillStyle = tok['--muted']; g.textAlign = 'right'; g.fillText('ε = ' + Math.round(e) % 360 + '°', ml + pw, 2);
+}
+
+/* ---------- Start ---------- */
+let ok3D = false;
+if (has3D) {
+  try {
+    build3D(); makeLabels(); resize3D(); setView('iso');
+    new ResizeObserver(() => { resize3D(); }).observe(stage);
+    $('loadmsg').hidden = true; ok3D = true;
+  } catch (err) {
+    $('loadmsg').textContent = '3D-Ansicht nicht verfügbar (' + err.message + '). Querschnitt und Diagramme unten funktionieren.';
+  }
+} else {
+  $('loadmsg').textContent = '3D-Bibliothek nicht geladen. Internetverbindung prüfen und neu laden. Querschnitt und Diagramme unten funktionieren.';
+  setConn();
+}
+st.rotorVel = -TAU * st.speed * (1 - st.slipSet);
+setSlip(4);
+if (reduced) setPlaying(false);
+readTokens();
+let last = performance.now(), frame = 0;
+function loop(now) {
+  const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+  if (st.playing) step(dt);
+  derive();
+  if (ok3D) { update3D(); controls.update(); renderer.render(scene, camera); updateLabels(); }
+  if (++tokAge > 30) { readTokens(); tokAge = 0; }
+  drawXS(); drawWave();
+  if (frame++ % 3 === 0) readouts();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>
