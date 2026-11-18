@@ -10,4 +10,4 @@ Interaktives 3D-Schulungsmodell eines Drehstrom-Asynchronmotors (Käfigläufer, 
 
 `index.html` ist die komplette Seite (three.js wird vom CDN geladen).
 
-**Online (nach Aktivierung von GitHub Pages):** https://mkp4dmh8vz-bot.github.io/Emotor-Modell/
+**Online:** https://mkp4dmh8vz-bot.github.io/Emotor-Modell/
